@@ -1,0 +1,117 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+    volumes:
+      - static_volume:/app/staticfiles
+      - media_volume:/app/mediafiles
+      - gunicorn_logs:/var/log/gunicorn
+    ports:
+      - "8000:8000"
+    environment:
+      - DEBUG=False
+      - SECRET_KEY=${SECRET_KEY}
+      - SITE_NAME=SCM Production
+      - ADMIN_URL=${ADMIN_URL}
+      - EMAIL_HOST=${EMAIL_HOST}
+      - EMAIL_PORT=${EMAIL_PORT}
+      - DEFAULT_FROM_EMAIL=${DEFAULT_FROM_EMAIL}
+      - DOMAIN=${DOMAIN}
+      - ADMIN_EMAIL=${ADMIN_EMAIL}
+      - CELERY_BROKER=redis://redis:6379/0
+      - CELERY_BACKEND=redis://redis:6379/0
+      - SENTRY_DSN=${SENTRY_DSN}
+    depends_on:
+      - redis
+    restart: always
+    networks:
+      - scm_network
+    command: /app/scripts/gunicorn_start.sh
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+    networks:
+      - scm_network
+    restart: always
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  celery_worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+    command: celery -A scm worker -l INFO
+    volumes:
+      - static_volume:/app/staticfiles
+      - media_volume:/app/mediafiles
+    environment:
+      - DEBUG=False
+      - SECRET_KEY=${SECRET_KEY}
+      - SITE_NAME=SCM Production
+      - ADMIN_URL=${ADMIN_URL}
+      - EMAIL_HOST=${EMAIL_HOST}
+      - EMAIL_PORT=${EMAIL_PORT}
+      - DEFAULT_FROM_EMAIL=${DEFAULT_FROM_EMAIL}
+      - DOMAIN=${DOMAIN}
+      - ADMIN_EMAIL=${ADMIN_EMAIL}
+      - CELERY_BROKER=redis://redis:6379/0
+      - CELERY_BACKEND=redis://redis:6379/0
+      - SENTRY_DSN=${SENTRY_DSN}
+    depends_on:
+      - redis
+      - backend
+    networks:
+      - scm_network
+    restart: always
+
+  celery_beat:
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+    command: celery -A scm beat -l INFO
+    volumes:
+      - static_volume:/app/staticfiles
+      - media_volume:/app/mediafiles
+    environment:
+      - DEBUG=False
+      - SECRET_KEY=${SECRET_KEY}
+      - SITE_NAME=SCM Production
+      - ADMIN_URL=${ADMIN_URL}
+      - EMAIL_HOST=${EMAIL_HOST}
+      - EMAIL_PORT=${EMAIL_PORT}
+      - DEFAULT_FROM_EMAIL=${DEFAULT_FROM_EMAIL}
+      - DOMAIN=${DOMAIN}
+      - ADMIN_EMAIL=${ADMIN_EMAIL}
+      - CELERY_BROKER=redis://redis:6379/0
+      - CELERY_BACKEND=redis://redis:6379/0
+      - SENTRY_DSN=${SENTRY_DSN}
+    depends_on:
+      - redis
+      - backend
+    networks:
+      - scm_network
+    restart: always
+
+networks:
+  scm_network:
+    driver: bridge
+
+volumes:
+  static_volume:
+  media_volume:
+  gunicorn_logs:
+  redis_data:
